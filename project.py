@@ -97,49 +97,33 @@ X_test_scaled = scaler.transform(X_test)
 clf = LogisticRegression(max_iter=100, multi_class="ovr", penalty="l1", solver="saga")
 clf.fit(X_train_scaled, y_train)
 
-# Function to calculate and display metrics and ROC curve
-def display_metrics_and_roc_curve(threshold, feature_values):
-    # Create a DataFrame with the feature values for prediction
-    X_new = pd.DataFrame([feature_values], columns=X.columns)
-    
-    # Scale the feature values
-    X_new_scaled = scaler.transform(X_new)
-    
-    # Predict probabilities
-    probs = clf.predict_proba(X_test_scaled)[:, 1]
-    y_pred = np.where(probs > threshold, 1, 0)
-    
-    # Predict the outcome for the new feature values
-    new_prob = clf.predict_proba(X_new_scaled)[:, 1]
-    new_pred = np.where(new_prob > threshold, 1, 0)[0]
-    
-    # AUC-ROC score
-    roc_auc = roc_auc_score(y_test, probs)
-    
-    # Calculate ROC curve
-    fpr, tpr, thresholds = roc_curve(y_test, probs)
-    
-    # Determine the best threshold
-    J = tpr - fpr
-    ix = np.argmax(J)
-    best_threshold = thresholds[ix]
+# Sidebar sliders for feature inputs
+st.sidebar.write("## Adjust Feature Values")
+feature_values = {
+    'Pregnancies': st.sidebar.slider('Pregnancies', int(X['Pregnancies'].min()), int(X['Pregnancies'].max()), int(X['Pregnancies'].median())),
+    'Glucose': st.sidebar.slider('Glucose', int(X['Glucose'].min()), int(X['Glucose'].max()), int(X['Glucose'].median())),
+    'BloodPressure': st.sidebar.slider('BloodPressure', int(X['BloodPressure'].min()), int(X['BloodPressure'].max()), int(X['BloodPressure'].median())),
+    'SkinThickness': st.sidebar.slider('SkinThickness', int(X['SkinThickness'].min()), int(X['SkinThickness'].max()), int(X['SkinThickness'].median())),
+    'Insulin': st.sidebar.slider('Insulin', int(X['Insulin'].min()), int(X['Insulin'].max()), int(X['Insulin'].median())),
+    'BMI': st.sidebar.slider('BMI', float(X['BMI'].min()), float(X['BMI'].max()), float(X['BMI'].median())),
+    'DiabetesPedigreeFunction': st.sidebar.slider('DiabetesPedigreeFunction', float(X['DiabetesPedigreeFunction'].min()), float(X['DiabetesPedigreeFunction'].max()), float(X['DiabetesPedigreeFunction'].median())),
+    'Age': st.sidebar.slider('Age', int(X['Age'].min()), int(X['Age'].max()), int(X['Age'].median()))
+}
 
-    # Confusion matrix
-    cm = confusion_matrix(y_test, y_pred)
-    st.write("## Confusion Matrix:")
-    st.write(pd.DataFrame(cm, columns=['Predicted 0', 'Predicted 1'], index=['Actual 0', 'Actual 1']))
+# Predict the outcome for the new feature values
+X_new = pd.DataFrame([feature_values], columns=X.columns)
+X_new_scaled = scaler.transform(X_new)
+predicted_probability = clf.predict_proba(X_new_scaled)[0][1]
+predicted_outcome = clf.predict(X_new_scaled)[0]
 
-    # Display evaluation metrics
-    accuracy = accuracy_score(y_test, y_pred)
-    precision = precision_score(y_test, y_pred)
-    recall = recall_score(y_test, y_pred)
-    f1 = f1_score(y_test, y_pred)
+# Display predicted values
+st.write("## Prediction for Input Feature Values:")
+st.write(f"Predicted Probability: {predicted_probability:.2f}")
+st.write(f"Predicted Outcome: {predicted_outcome}")
 
-    st.write("## Evaluation Metrics:")
-    st.write(f"Accuracy: {accuracy:.2f}")
-    st.write(f"Precision: {precision:.2f}")
-    st.write(f"Recall: {recall:.2f}")
-   
+# Threshold slider
+threshold = st.slider('Threshold:', 0.0, 1.0, 0.5)
+
 # Function to calculate and display metrics and ROC curve
 def display_metrics_and_roc_curve(threshold, feature_values):
     # Create a DataFrame with the feature values for prediction
@@ -199,32 +183,5 @@ def display_metrics_and_roc_curve(threshold, feature_values):
     # Display AUC-ROC score
     st.write("## AUC-ROC Score:", roc_auc)
 
-# Sidebar sliders for feature inputs
-st.sidebar.write("## Adjust Feature Values")
-feature_values = {
-    'Pregnancies': st.sidebar.slider('Pregnancies', int(X['Pregnancies'].min()), int(X['Pregnancies'].max()), int(X['Pregnancies'].median())),
-    'Glucose': st.sidebar.slider('Glucose', int(X['Glucose'].min()), int(X['Glucose'].max()), int(X['Glucose'].median())),
-    'BloodPressure': st.sidebar.slider('BloodPressure', int(X['BloodPressure'].min()), int(X['BloodPressure'].max()), int(X['BloodPressure'].median())),
-    'SkinThickness': st.sidebar.slider('SkinThickness', int(X['SkinThickness'].min()), int(X['SkinThickness'].max()), int(X['SkinThickness'].median())),
-    'Insulin': st.sidebar.slider('Insulin', int(X['Insulin'].min()), int(X['Insulin'].max()), int(X['Insulin'].median())),
-    'BMI': st.sidebar.slider('BMI', float(X['BMI'].min()), float(X['BMI'].max()), float(X['BMI'].median())),
-    'DiabetesPedigreeFunction': st.sidebar.slider('DiabetesPedigreeFunction', float(X['DiabetesPedigreeFunction'].min()), float(X['DiabetesPedigreeFunction'].max()), float(X['DiabetesPedigreeFunction'].median())),
-    'Age': st.sidebar.slider('Age', int(X['Age'].min()), int(X['Age'].max()), int(X['Age'].median()))
-}
-
-# Threshold slider
-threshold = st.slider('Threshold:', 0.0, 1.0, 0.5)
-
 # Display metrics and ROC curve based on the selected threshold and feature values
 display_metrics_and_roc_curve(threshold, feature_values)
-
-# Predict the outcome for the new feature values
-X_new = pd.DataFrame([feature_values], columns=X.columns)
-X_new_scaled = scaler.transform(X_new)
-predicted_probability = clf.predict_proba(X_new_scaled)[0][1]
-predicted_outcome = clf.predict(X_new_scaled)[0]
-
-# Display predicted values
-st.write("## Prediction for Input Feature Values:")
-st.write(f"Predicted Probability: {predicted_probability:.2f}")
-st.write(f"Predicted Outcome: {predicted_outcome}")
