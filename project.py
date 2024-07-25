@@ -1,187 +1,118 @@
+import streamlit as st
 import pandas as pd
 import numpy as np
-import streamlit as st
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import MinMaxScaler
-from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import roc_auc_score, roc_curve, confusion_matrix, accuracy_score, precision_score, recall_score, f1_score
+import pickle
+import seaborn as sns
+from sklearn.metrics import confusion_matrix, accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, roc_curve
 import matplotlib.pyplot as plt
 
-# Page configuration
-st.set_page_config(page_title="Diabetes Prediction", layout="centered")
+# Load the pre-trained model and scaler
+with open('best_model.pkl', 'rb') as f:
+    best_model = pickle.load(f)
 
-# Custom CSS for styling
-st.markdown("""
-    <style>
-        .main {
-            background-color: #000000;
-        }
-        .sidebar .sidebar-content {
-            background-color: #e9ecef;
-        }
-        .stButton>button {
-            color: white;
-            background: #28a745;
-        }
-        .stSlider>div>div>div>div {
-            background: #28a745;
-        }
-        h1, h2, h3 {
-            color: #28a745;
-        }
-        .css-1v0mbdj p, .css-1v0mbdj {
-            color: #ffffff;
-        }
-        .css-1v0mbdj {
-            color: #ffffff;
-        }
-        .css-1cpxqw2, .css-16huue1 {
-            color: #ffffff;
-        }
-        .css-145kmo2 p {
-            color: #ffffff;
-        }
-    </style>
-""", unsafe_allow_html=True)
+with open('scaler.pkl', 'rb') as f:
+    scaler = pickle.load(f)
 
-# Header
-st.write("# Diabetes Prediction")
+# Load the dataset
+df = pd.read_csv("diabetes.csv")
 
-# Load data
-@st.cache_data
-def load_data():
-    data = pd.read_csv("diabetes.csv")
-    return data
+# Streamlit app
+st.title('Diabetes Prediction App')
+st.write("This app uses machine learning to predict whether a person has diabetes based on their health information.")
 
-data = load_data()
+# Sidebar inputs for new data
+st.sidebar.header('Input Parameters')
+def user_input_features():
+    pregnancies = st.sidebar.slider('Pregnancies', 0, 20, 0)
+    glucose = st.sidebar.slider('Glucose', 0, 200, 120)
+    blood_pressure = st.sidebar.slider('Blood Pressure', 0, 140, 70)
+    skin_thickness = st.sidebar.slider('Skin Thickness', 0, 99, 20)
+    insulin = st.sidebar.slider('Insulin', 0, 846, 79)
+    bmi = st.sidebar.slider('BMI', 0.0, 70.0, 32.0)
+    diabetes_pedigree_function = st.sidebar.slider('Diabetes Pedigree Function', 0.0, 2.5, 0.5)
+    age = st.sidebar.slider('Age', 0, 120, 33)
+    
+    data = {
+        'Pregnancies': pregnancies,
+        'Glucose': glucose,
+        'BloodPressure': blood_pressure,
+        'SkinThickness': skin_thickness,
+        'Insulin': insulin,
+        'BMI': bmi,
+        'DiabetesPedigreeFunction': diabetes_pedigree_function,
+        'Age': age
+    }
+    features = pd.DataFrame(data, index=[0])
+    return features
 
-# Handling zero or less than zero values
-cols = ['Glucose', 'BloodPressure', 'SkinThickness', 'Insulin', 'BMI']
-for col in cols:
-    zero_values = (data[col] <= 0).sum()
-    if zero_values > 0:
-        median = data[col].median()
-        data.loc[data[col] <= 0, col] = median
+input_df = user_input_features()
 
-# Outlier removal
-def mod_outlier(df):
-    df1 = df.copy()
-    df = df._get_numeric_data()
-    q1 = df.quantile(0.25)
-    q3 = df.quantile(0.75)
-    iqr = q3 - q1
-    lower_bound = q1 - (1.5 * iqr)
-    upper_bound = q3 + (1.5 * iqr)
+# Scale the input features
+scaled_input = scaler.transform(input_df)
 
-    for col in df.columns:
-        df1[col] = np.where(df[col] < lower_bound[col], lower_bound[col],
-                            np.where(df[col] > upper_bound[col], upper_bound[col], df[col]))
+# Predict using the best model
+if st.sidebar.button('Predict'):
+    prediction = best_model.predict(scaled_input)
+    st.subheader('Prediction')
+    st.write('Diabetic' if prediction[0] == 1 else 'Non-diabetic')
 
-    return df1
+# Space and line separator
+st.write("---")
 
-data_mod = mod_outlier(data)
+# Evaluation Metrics
+X = df.drop('Outcome', axis=1)
+y = df['Outcome']
 
-# Splitting data
-X = data_mod[['Pregnancies', 'Glucose', 'BloodPressure', 'SkinThickness', 'Insulin', 'BMI', 'DiabetesPedigreeFunction', 'Age']]
-y = data_mod['Outcome']
+X_scaled = scaler.transform(X)
+y_pred_proba = best_model.predict_proba(X_scaled)[:, 1]
 
-# Train-test split
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, random_state=43)
-
-# Feature scaling
-scaler = MinMaxScaler()
-X_train_scaled = scaler.fit_transform(X_train)
-X_test_scaled = scaler.transform(X_test)
-
-# Logistic Regression
-clf = LogisticRegression(max_iter=100, multi_class="ovr", penalty="l1", solver="saga")
-clf.fit(X_train_scaled, y_train)
-
-# Sidebar sliders for feature inputs
-st.sidebar.write("## Adjust Feature Values")
-feature_values = {
-    'Pregnancies': st.sidebar.slider('Pregnancies', int(X['Pregnancies'].min()), int(X['Pregnancies'].max()), int(X['Pregnancies'].median())),
-    'Glucose': st.sidebar.slider('Glucose', int(X['Glucose'].min()), int(X['Glucose'].max()), int(X['Glucose'].median())),
-    'BloodPressure': st.sidebar.slider('BloodPressure', int(X['BloodPressure'].min()), int(X['BloodPressure'].max()), int(X['BloodPressure'].median())),
-    'SkinThickness': st.sidebar.slider('SkinThickness', int(X['SkinThickness'].min()), int(X['SkinThickness'].max()), int(X['SkinThickness'].median())),
-    'Insulin': st.sidebar.slider('Insulin', int(X['Insulin'].min()), int(X['Insulin'].max()), int(X['Insulin'].median())),
-    'BMI': st.sidebar.slider('BMI', float(X['BMI'].min()), float(X['BMI'].max()), float(X['BMI'].median())),
-    'DiabetesPedigreeFunction': st.sidebar.slider('DiabetesPedigreeFunction', float(X['DiabetesPedigreeFunction'].min()), float(X['DiabetesPedigreeFunction'].max()), float(X['DiabetesPedigreeFunction'].median())),
-    'Age': st.sidebar.slider('Age', int(X['Age'].min()), int(X['Age'].max()), int(X['Age'].median()))
-}
-
-# Predict the outcome for the new feature values
-X_new = pd.DataFrame([feature_values], columns=X.columns)
-X_new_scaled = scaler.transform(X_new)
-predicted_probability = clf.predict_proba(X_new_scaled)[0][1]
-predicted_outcome = clf.predict(X_new_scaled)[0]
-
-# Display predicted values
-st.write("## Prediction for Input Feature Values:")
-st.write(f"Predicted Probability: {predicted_probability:.2f}")
-st.write(f"Predicted Outcome: {predicted_outcome}")
+st.subheader('Confusion Matrix and Evaluation Metrics')
 
 # Threshold slider
-threshold = st.slider('Threshold:', 0.0, 1.0, 0.5)
+threshold = st.slider('Threshold', 0.0, 1.0, 0.5)
 
-# Function to calculate and display metrics and ROC curve
-def display_metrics_and_roc_curve(threshold, feature_values):
-    # Create a DataFrame with the feature values for prediction
-    X_new = pd.DataFrame([feature_values], columns=X.columns)
-    
-    # Scale the feature values
-    X_new_scaled = scaler.transform(X_new)
-    
-    # Predict probabilities
-    probs = clf.predict_proba(X_test_scaled)[:, 1]
-    y_pred = np.where(probs > threshold, 1, 0)
-    
-    # Predict the outcome for the new feature values
-    new_prob = clf.predict_proba(X_new_scaled)[:, 1]
-    new_pred = np.where(new_prob > threshold, 1, 0)[0]
-    
-    # AUC-ROC score
-    roc_auc = roc_auc_score(y_test, probs)
-    
-    # Calculate ROC curve
-    fpr, tpr, thresholds = roc_curve(y_test, probs)
-    
-    # Determine the best threshold
-    J = tpr - fpr
-    ix = np.argmax(J)
-    best_threshold = thresholds[ix]
+# Binarize predictions based on threshold
+y_pred = (y_pred_proba >= threshold).astype(int)
 
-    # Confusion matrix
-    cm = confusion_matrix(y_test, y_pred)
-    st.write("## Confusion Matrix:")
-    st.write(pd.DataFrame(cm, columns=['Predicted 0', 'Predicted 1'], index=['Actual 0', 'Actual 1']))
+# Confusion matrix
+cm = confusion_matrix(y, y_pred)
+st.subheader('Confusion Matrix')
+st.write(f"Threshold: {threshold}")
+fig, ax = plt.subplots(figsize=(8, 6))
+sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', cbar=False, ax=ax)
+ax.set_xlabel('Predicted')
+ax.set_ylabel('Actual')
+ax.set_title('Confusion Matrix')
+st.pyplot(fig)
 
-    # Display evaluation metrics
-    accuracy = accuracy_score(y_test, y_pred)
-    precision = precision_score(y_test, y_pred)
-    recall = recall_score(y_test, y_pred)
-    f1 = f1_score(y_test, y_pred)
+# Evaluation metrics calculation
+accuracy = accuracy_score(y, y_pred)
+precision = precision_score(y, y_pred)
+recall = recall_score(y, y_pred)
+f1 = f1_score(y, y_pred)
 
-    st.write("## Evaluation Metrics:")
-    st.write(f"Accuracy: {accuracy:.2f}")
-    st.write(f"Precision: {precision:.2f}")
-    st.write(f"Recall: {recall:.2f}")
-    st.write(f"F1-score: {f1:.2f}")
+st.subheader('Evaluation Metrics')
+st.write(f'Accuracy: {accuracy:.2f}')
+st.write(f'Precision: {precision:.2f}')
+st.write(f'Recall: {recall:.2f}')
+st.write(f'F1 Score: {f1:.2f}')
 
-    # Plot ROC curve
-    fig, ax = plt.subplots()
-    ax.plot(fpr, tpr, label='ROC Curve (area = %0.2f)' % roc_auc)
-    ax.plot([0, 1], [0, 1], linestyle='--')
-    ax.scatter(fpr[ix], tpr[ix], marker='o', color='red', label='Best Threshold = %0.2f' % best_threshold)
-    ax.set_xlabel('False Positive Rate')
-    ax.set_ylabel('True Positive Rate')
-    ax.set_title('Receiver Operating Characteristic')
-    ax.legend()
-    st.write("## ROC Curve:")
-    st.pyplot(fig)
+# AUC-ROC curve
+fpr, tpr, thresholds = roc_curve(y, y_pred_proba)
+roc_auc = roc_auc_score(y, y_pred_proba)
 
-    # Display AUC-ROC score
-    st.write("## AUC-ROC Score:", roc_auc)
+st.subheader('ROC Curve')
+fig, ax = plt.subplots(figsize=(10, 6))
+ax.plot(fpr, tpr, color='blue', label=f'ROC Curve (area = {roc_auc:.2f})')
+ax.plot([0, 1], [0, 1], color='red', linestyle='--')
+ax.set_xlabel('False Positive Rate')
+ax.set_ylabel('True Positive Rate')
+ax.set_title('Receiver Operating Characteristic (ROC) Curve')
+ax.legend(loc="lower right")
 
-# Display metrics and ROC curve based on the selected threshold and feature values
-display_metrics_and_roc_curve(threshold, feature_values)
+# Mark the best threshold
+optimal_idx = np.argmax(tpr - fpr)
+optimal_threshold = thresholds[optimal_idx]
+ax.scatter(fpr[optimal_idx], tpr[optimal_idx], marker='o', color='black', label=f'Best Threshold = {optimal_threshold:.2f}')
+ax.legend(loc="lower right")
+st.pyplot(fig)
